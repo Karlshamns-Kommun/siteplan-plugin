@@ -1,10 +1,9 @@
-const merge = require('webpack-merge');
-const common = require('./webpack.common');
-const WriteFilePlugin = require('write-file-webpack-plugin');
+const { merge } = require('webpack-merge');
+const common = require('./webpack.common.js');
 
 module.exports = merge(common, {
   output: {
-    path: `${__dirname}/../../origo_v2/plugins`,
+    path: `${__dirname}/../../origo/plugins`,
     publicPath: '/build/js',
     filename: 'siteplan.js',
     libraryTarget: 'var',
@@ -13,12 +12,26 @@ module.exports = merge(common, {
   },
   mode: 'development',
   module: {
+    rules: [{
+      test: /\.scss$/,
+      use: [{
+        loader: 'style-loader'
+      },
+      {
+        loader: 'css-loader'
+      },
+      {
+        loader: 'sass-loader'
+      }
+      ]
+    }]
   },
-  plugins: [
-    new WriteFilePlugin()
-  ],
   devServer: {
-    contentBase: './',
-    port: 9008
+    static: './',
+    port: 9008,
+    hot: false, // enabled by default, enable and configure for HMR
+    devMiddleware: {
+      writeToDisk: true
+    }
   }
 });

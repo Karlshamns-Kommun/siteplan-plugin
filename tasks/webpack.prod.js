@@ -1,7 +1,8 @@
 const webpack = require('webpack');
-const merge = require('webpack-merge');
-const UglifyJSPlugin = require('uglifyjs-webpack-plugin');
-const common = require('./webpack.common.js');
+const { merge } = require('webpack-merge');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const autoprefixer = require('autoprefixer');
+const common = require('./webpack.common');
 
 module.exports = merge(common, {
   optimization: {
@@ -21,15 +22,34 @@ module.exports = merge(common, {
   devtool: false,
   mode: 'production',
   module: {
+    rules: [{
+      test: /\.(sc|c)ss$/,
+      use: [{
+        loader: MiniCssExtractPlugin.loader
+      },
+      {
+        loader: 'css-loader'
+      },
+      {
+        loader: 'postcss-loader',
+        options: {
+          plugins: [
+            autoprefixer({
+              env: '> 0.5%, last 2 versions, Firefox ESR, not dead, not ie <= 10'
+            })
+          ]
+        }
+      },
+      {
+        loader: 'sass-loader'
+      }
+      ]
+    }]
   },
   plugins: [
-    new UglifyJSPlugin({
-      uglifyOptions: {
-        output: {
-          beautify: false
-        }
-      }
-    }),
-    new webpack.optimize.AggressiveMergingPlugin()
+    new webpack.optimize.AggressiveMergingPlugin(),
+    new MiniCssExtractPlugin({
+      filename: '../css/siteplan.css'
+    })
   ]
 });

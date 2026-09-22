@@ -35,7 +35,9 @@ const Search = function Search(options = {}) {
 
   const {
     geometryAttribute,
-    url,
+    urlAdress,
+    urlFastighet,
+    urlYta,
     queryParameterName = 'q',
     queryPrefix = '',
     backgroundImageUrl,
@@ -81,12 +83,23 @@ const Search = function Search(options = {}) {
     }
   ];
 
-  const isOnIos = Origo.isOnIos();
 
-  if (isOnIos) {
+  if (isOnIos()) {
     sizes = defaultSizes.filter(size => size.size[0] < 300 && size.size[1] < 300);
   } else {
     sizes = defaultSizes;
+  }
+
+  function isOnIos() {
+    return [
+      'iPad Simulator',
+      'iPhone Simulator',
+      'iPod Simulator',
+      'iPad',
+      'iPhone',
+      'iPod'
+    ].includes(navigator.platform)
+      || (navigator.userAgent.includes('Mac') && 'ontouchend' in document);
   }
 
   function clear() {
@@ -227,7 +240,7 @@ const Search = function Search(options = {}) {
   }
 
   function getRelatedProperty(relatedPropertyId) {
-    const fetchUrl = options.urlRelatedProperty.replace('objectId', relatedPropertyId);
+    const fetchUrl = options.urlYta.replace('objectId', relatedPropertyId);
     return fetch(fetchUrl);
   }
 
@@ -256,6 +269,22 @@ const Search = function Search(options = {}) {
       dataItem.coordinates = [item[options.eastingIndex], item[options.northingIndex]];
       dataItem.relatedProperty = item[options.relatedPropteryIndex];
       searchDb[item[options.idIndex]] = dataItem;
+    });
+  }
+
+  function setParcelSearchDb(data) {
+    const features = Array.isArray(data) ? data : data.features || [];
+    features.forEach((feature, index) => {
+      const { geometry, properties } = feature;
+      if (!geometry || !properties || !geometry.coordinates) return;
+
+      const label = `parcel-${properties.id}-${index}`;
+      const dataItem = {};
+      dataItem.label = label;
+      dataItem.value = [properties.name, properties.municipality].filter(Boolean).join(', ');
+      dataItem.coordinates = [geometry.coordinates[1], geometry.coordinates[0]];
+      dataItem.relatedProperty = properties.id;
+      searchDb[label] = dataItem;
     });
   }
 
@@ -410,33 +439,40 @@ const Search = function Search(options = {}) {
       }
     });
 
-    const handler = function func(data) {
+    const handler = function func(addresses, parcels) {
       list = [];
       searchDb = {};
-      if (data.length) {
-        setSearchDb(data);
+      setSearchDb(addresses);
+      setParcelSearchDb(parcels);
+      if (Object.keys(searchDb).length) {
         if (name && groupSuggestions) {
           list = groupToList(groupDb(searchDb));
         } else {
-          list = dbToList(data);
+          list = dbToList();
         }
         awesomplete.list = list;
         awesomplete.evaluate();
       }
     };
 
-    function makeRequest(reqHandler, obj) {
-      const query = `${queryPrefix} ${obj.value}`;
-      let queryUrl = `${url}${url.indexOf('?') !== -1 ? '&' : '?'}${queryParameterName}=${encodeURI(query)}`;
+    function getQueryUrl(searchUrl, query) {
+      let queryUrl = `${searchUrl}${searchUrl.indexOf('?') !== -1 ? '&' : '?'}${queryParameterName}=${encodeURI(query)}`;
       if (includeSearchableLayers) {
         queryUrl += `&l=${viewer.getSearchableLayers(searchableDefault)}`;
       }
+      return queryUrl;
+    }
 
-      fetch(queryUrl)
-        .then(response => response.json())
-        .then((data) => {
-          reqHandler(data);
-        });
+    function makeRequest(reqHandler, obj) {
+      const query = `${queryPrefix} ${obj.value}`;
+      const addressRequest = fetch(getQueryUrl(urlAdress, query))
+        .then(response => response.json());
+      const parcelRequest = urlFastighet
+        ? fetch(getQueryUrl(urlFastighet, query)).then(response => response.json())
+        : Promise.resolve([]);
+
+      Promise.all([addressRequest, parcelRequest])
+        .then(([addresses, parcels]) => reqHandler(addresses, parcels));
     }
 
     input.addEventListener('keyup', (e) => {
