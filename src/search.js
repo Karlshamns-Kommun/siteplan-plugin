@@ -218,13 +218,10 @@ const Search = function Search(options = {}) {
           padding: [0, 0, 0, 0]
         });
         map.getView().setResolution(target.closestResolution);
-        printControl.renderPrintComponent({
-          mapInteractionsActive: target.oversize,
-          orientation: target.featureOrientation,
-          size: target.pageSize,
-          filename: title.replace(' ', '_').replace(':', '_'),
-          title
-        });
+        printComponent.render();
+        printComponent.changeOrientation({ orientation: target.featureOrientation });
+        printComponent.changeSize({ size: target.pageSize });
+        printComponent.changeTitle({ value: title });
         map.once('rendercomplete', () => {
           // Origo.hideLoading();
           setTimeout(() => {
