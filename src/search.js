@@ -65,7 +65,11 @@ const Search = function Search(options = {}) {
   let headerElement;
   let vectorSource;
   let sizes;
-  let printResolution;
+  let printDpi;
+
+  const DEFAULT_PRINT_DPI = 150;
+  const MILLIMETERS_PER_INCH = 25.4;
+  const CSS_PIXEL_DPI = MILLIMETERS_PER_INCH / 0.28;
 
   const margins = {
     topBottom: printMargins.topBottom * 2,
@@ -82,7 +86,6 @@ const Search = function Search(options = {}) {
       size: [297, 420]
     }
   ];
-
 
   if (isOnIos()) {
     sizes = defaultSizes.filter(size => size.size[0] < 300 && size.size[1] < 300);
@@ -113,7 +116,6 @@ const Search = function Search(options = {}) {
   }
 
   function resolutionToScale(resolution, projection, dpi) {
-    // const dpi = 25.4 / 0.28;
     const mpu = projection.getMetersPerUnit();
     let scale = resolution * mpu * 39.37 * dpi;
     scale = Math.round(scale);
@@ -121,10 +123,13 @@ const Search = function Search(options = {}) {
   }
 
   function scaleToResolution(scale, projection) {
-    const dpi = 25.4 / 0.28;
     const mpu = projection.getMetersPerUnit();
-    const resolution = scale / (mpu * 39.37 * dpi);
+    const resolution = scale / (mpu * 39.37 * CSS_PIXEL_DPI);
     return resolution;
+  }
+
+  function millimetersToPixels(millimeters, dpi, pixelRatio) {
+    return Math.round((millimeters * dpi) / MILLIMETERS_PER_INCH / pixelRatio);
   }
 
   function getClosestScale(target, printScales) {
@@ -135,26 +140,31 @@ const Search = function Search(options = {}) {
   function checkExtentSize(extent, printScales) {
     const extentWidth = extent[2] - extent[0];
     const extentHeight = extent[3] - extent[1];
-    let printSize;
     let pageSize;
     let closestResolution;
 
     const featureOrientation = extentWidth / extentHeight >= 1 ? 'landscape' : 'portrait';
-    const pixelRatio = isOnIos ? 1 : window.devicePixelRatio;
-    const screenDPI = printResolution * pixelRatio;
+    const pixelRatio = isOnIos() ? 1 : window.devicePixelRatio;
+    const screenDpi = printDpi * pixelRatio;
+    const view = map.getView();
+    const projection = view.getProjection();
 
     for (let i = 0; i < sizes.length; i += 1) {
-      if (featureOrientation === 'landscape') {
-        printSize = [Math.round(((sizes[i].size[1] - margins.leftRight) * screenDPI) / 25.4 / pixelRatio), Math.round(((sizes[i].size[0] - margins.topBottom) * screenDPI) / 25.4 / pixelRatio)];
-      } else {
-        printSize = [Math.round(((sizes[i].size[0] - margins.leftRight) * screenDPI) / 25.4 / pixelRatio), Math.round(((sizes[i].size[1] - margins.topBottom) * screenDPI) / 25.4 / pixelRatio)];
-      }
+      const size = sizes[i];
+      const pageWidth = featureOrientation === 'landscape' ? size.size[1] : size.size[0];
+      const pageHeight = featureOrientation === 'landscape' ? size.size[0] : size.size[1];
+      const printWidth = pageWidth - margins.leftRight;
+      const printHeight = pageHeight - margins.topBottom;
+      const printSize = [
+        millimetersToPixels(printWidth, screenDpi, pixelRatio),
+        millimetersToPixels(printHeight, screenDpi, pixelRatio)
+      ];
 
-      const resolutionForExtent = map.getView().getResolutionForExtent(extent, printSize);
-      const scaleForExtent = resolutionToScale(resolutionForExtent, map.getView().getProjection(), screenDPI);
+      const resolutionForExtent = view.getResolutionForExtent(extent, printSize);
+      const scaleForExtent = resolutionToScale(resolutionForExtent, projection, screenDpi);
       const closestScale = getClosestScale(scaleForExtent, printScales);
-      closestResolution = scaleToResolution(closestScale, map.getView().getProjection());
-      pageSize = sizes[i].name;
+      closestResolution = scaleToResolution(closestScale, projection);
+      pageSize = size.name;
 
       if (closestScale > scaleForExtent) {
         return {
@@ -174,7 +184,7 @@ const Search = function Search(options = {}) {
     };
   }
 
-  function showFeature(features, objTitle, content, pointCoords) { // Rename function?
+  function showFeature(features, objTitle, content, pointCoords) {
     const obj = {};
     obj.feature = features[0];
     obj.title = objTitle;
@@ -194,10 +204,11 @@ const Search = function Search(options = {}) {
 
     const geom = features[0].getGeometry();
     const printControl = viewer.getControlByName('print');
-    const printComponent = printControl.getPrintComponent && printControl.getPrintComponent();
-    printResolution = printComponent && printComponent.getResolution ? printComponent.getResolution() : 150;
-    const projection = map.getView().getProjection();
-    const printScales = viewer.getResolutions().map(resolution => `1:${resolutionToScale(resolution, projection, 25.4 / 0.28)}`);
+    const printComponent = printControl.getPrintComponent();
+    const view = map.getView();
+    const projection = view.getProjection();
+    printDpi = printComponent.getResolution() || DEFAULT_PRINT_DPI;
+    const printScales = viewer.getResolutions().map(resolution => `1:${resolutionToScale(resolution, projection, CSS_PIXEL_DPI)}`);
 
     const target = checkExtentSize(geom.getExtent(), printScales);
     title = obj.feature.get('name').split('Enhetsområde')[0].trim().split(' ').slice(1).join(' ');
@@ -210,25 +221,20 @@ const Search = function Search(options = {}) {
           if (layer.get('inPrint')) { layer.setVisible(true); }
         });
         const fitGeom = target.oversize ? new Origo.ol.geom.Point(pointCoords) : geom;
-
-
-        //Origo.showLoading();
-
-        map.getView().fit(fitGeom, {
+        view.fit(fitGeom, {
           padding: [0, 0, 0, 0]
         });
-        map.getView().setResolution(target.closestResolution);
+        view.setResolution(target.closestResolution);
         printComponent.render();
         printComponent.changeOrientation({ orientation: target.featureOrientation });
         printComponent.changeSize({ size: target.pageSize });
         printComponent.changeTitle({ value: title });
         map.once('rendercomplete', () => {
-          // Origo.hideLoading();
           setTimeout(() => {
             if (target.oversize) {
               const modal = Origo.ui.Modal({
                 title: 'OBS!',
-                content: isOnIos ? iosOversizeInfoContent : oversizeInfoContent,
+                content: isOnIos() ? iosOversizeInfoContent : oversizeInfoContent,
                 target: viewer.getId(),
                 style: 'max-width: 94%;'
               });
@@ -421,9 +427,9 @@ const Search = function Search(options = {}) {
   /*
   The label property in Awesomplete is used to store the feature id. This way the properties
   of each feature in the search response will be available in event handling.
-  The complete properties are stored in a tempory db called searchDb. This is a workaround
+  The complete properties are stored in a temporary db called searchDb. This is a workaround
   for a limit in Awesomplete that can only store data in the fields label and text.
-  The data-category attribute is used to make a layer division in the sugguestion list.
+  The data-category attribute is used to make a layer division in the suggestion list.
   */
 
   function initAutocomplete() {
@@ -551,7 +557,7 @@ const Search = function Search(options = {}) {
       });
 
       headerElement = Origo.ui.Element({
-        cls: 'relavtive width-full text-large text-white text-align-center margin-x-auto',
+        cls: 'relative width-full text-large text-white text-align-center margin-x-auto',
         innerHTML: 'TOMTKARTA',
         style: {
           'padding-top': 'calc(16px + 2%)',
