@@ -194,9 +194,12 @@ const Search = function Search(options = {}) {
 
     const geom = features[0].getGeometry();
     const printControl = viewer.getControlByName('print');
-    printResolution = printControl.getPrintResolution();
+    const printComponent = printControl.getPrintComponent && printControl.getPrintComponent();
+    printResolution = printComponent && printComponent.getResolution ? printComponent.getResolution() : 150;
+    const projection = map.getView().getProjection();
+    const printScales = viewer.getResolutions().map(resolution => `1:${resolutionToScale(resolution, projection, 25.4 / 0.28)}`);
 
-    const target = checkExtentSize(geom.getExtent(), printControl.getPrintOptions().scales);
+    const target = checkExtentSize(geom.getExtent(), printScales);
     title = obj.feature.get('name').split('Enhetsområde')[0].trim().split(' ').slice(1).join(' ');
 
     if (target) {
@@ -207,7 +210,10 @@ const Search = function Search(options = {}) {
           if (layer.get('inPrint')) { layer.setVisible(true); }
         });
         const fitGeom = target.oversize ? new Origo.ol.geom.Point(pointCoords) : geom;
-        Origo.showLoading();
+
+
+        //Origo.showLoading();
+
         map.getView().fit(fitGeom, {
           padding: [0, 0, 0, 0]
         });
@@ -220,7 +226,7 @@ const Search = function Search(options = {}) {
           title
         });
         map.once('rendercomplete', () => {
-          Origo.hideLoading();
+          // Origo.hideLoading();
           setTimeout(() => {
             if (target.oversize) {
               const modal = Origo.ui.Modal({
