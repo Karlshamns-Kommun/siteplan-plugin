@@ -1,12 +1,21 @@
 .siteplan-search-layout .o-search-wrapper {
 	box-sizing: border-box;
 	max-width: none;
+	position: relative;
 	width: 100%;
+	z-index: 20;
 }
 
 .siteplan-search-layout .o-search {
 	box-sizing: border-box;
+	position: relative;
 	width: 100%;
+	z-index: 20;
+}
+
+.siteplan-search-layout .awesomplete,
+.siteplan-search-layout .awesomplete ul {
+	z-index: 30;
 }
 
 .advanced-map-link-container {
@@ -33,7 +42,7 @@
 	position: absolute;
 	text-decoration: none;
 	transition: all 0.2s ease;
-	z-index: 1000;
+	z-index: 10;
 }
 
 .advanced-map-link:visited,

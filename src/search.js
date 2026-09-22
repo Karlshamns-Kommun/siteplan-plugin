@@ -259,6 +259,11 @@ const Search = function Search(options = {}) {
 
   function showPropertyPrintPreview(features, pointCoords) {
     const feature = features[0];
+    if (!feature) {
+      alert('Ett problem uppstod. ');
+      return;
+    }
+
     clear();
     createSelectionLayer(feature);
 
@@ -295,7 +300,7 @@ const Search = function Search(options = {}) {
 
   function getParcelId(feature) {
     const { properties = {} } = feature;
-    return properties.fnr || feature.id || properties.id || properties.objectId || properties.objectid || properties.objektid || properties.objid;
+    return properties.objid;
   }
 
   function getParcelName(properties) {
@@ -330,6 +335,14 @@ const Search = function Search(options = {}) {
     return undefined;
   }
 
+  function readPropertyFeatures(propertyData) {
+    const format = new Origo.ol.format.GeoJSON();
+    const geojson = Array.isArray(propertyData)
+      ? { type: 'FeatureCollection', features: propertyData }
+      : propertyData;
+    return format.readFeatures(geojson);
+  }
+
   function selectHandler(evt) {
     const id = evt.text.label;
     const data = searchDb[id];
@@ -337,8 +350,7 @@ const Search = function Search(options = {}) {
     getRelatedProperty(data.relatedProperty)
       .then(response => response.json())
       .then((propertyData) => {
-        const format = new Origo.ol.format.GeoJSON();
-        const features = format.readFeatures(propertyData, { dataProjection: 'EPSG:3006' });
+        const features = readPropertyFeatures(propertyData);
 
         const property = data.useFetchedGeometry || !data.coordinates
           ? features
@@ -349,18 +361,19 @@ const Search = function Search(options = {}) {
   }
 
   function setSearchDb(data) {
-    data.forEach((item) => {
+    data.forEach((item, index) => {
       const dataItem = {};
       /* Items from the /origoserver/lm/addresses endpoint are arrays organized as follows:
          [ID, VALUE, EASTING, NORTHING, RELATED_PARCEL] 
       */
 
-      dataItem.label = item[0];
+      const label = `address-${item[0]}-${index}`;
+      dataItem.label = label;
       dataItem.value = item[1].trim();
       dataItem.coordinates = [item[2], item[3]];
       dataItem.relatedProperty = item[4];
       dataItem.type = 'address';
-      searchDb[item[0]] = dataItem;
+      searchDb[label] = dataItem;
     });
   }
 
@@ -495,8 +508,12 @@ const Search = function Search(options = {}) {
     return items;
   }
 
-  function getSharedAutocompleteList() {
-    const items = dbToList();
+  function matchesInput(item, inputValue) {
+    return item.value.toLowerCase().includes(inputValue.toLowerCase());
+  }
+
+  function getSharedAutocompleteList(inputValue) {
+    const items = dbToList().filter(item => matchesInput(item, inputValue));
     const addresses = items.filter(item => item.type === 'address');
     const parcels = items.filter(item => item.type === 'parcel');
 
@@ -519,7 +536,7 @@ const Search = function Search(options = {}) {
       selectedParcels.push(...parcels.slice(selectedParcels.length, selectedParcels.length + remaining));
     }
 
-    return addGroupHeader(selectedAddresses, ADDRESS_HEADER).concat(addGroupHeader(selectedParcels, PARCEL_HEADER));
+    return addGroupHeader(selectedParcels, PARCEL_HEADER).concat(addGroupHeader(selectedAddresses, ADDRESS_HEADER));
   }
 
   /*
@@ -552,7 +569,7 @@ const Search = function Search(options = {}) {
       setSearchDb(addresses);
       setParcelSearchDb(parcels);
       if (Object.keys(searchDb).length) {
-        list = getSharedAutocompleteList();
+        list = getSharedAutocompleteList(input.value);
         awesomplete.list = list;
         awesomplete.evaluate();
       }
