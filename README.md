@@ -1,8 +1,10 @@
 # Siteplan plugin
 
-**PLEASE NOTE THAT THIS IS A BETA VERSION**
-
 Siteplan plugin for Origo.
+
+Developed for Origo 2.10.
+
+Based on the original version from Sigtuna kommun, with some inspiration from Haninge kommun.
 
 #### Example usage of Siteplan plugin
 
