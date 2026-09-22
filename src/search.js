@@ -2,6 +2,10 @@
 
 import Origo from 'Origo';
 import Awesomplete from 'awesomplete';
+import { icon as fontawesomeIcon } from '@fortawesome/fontawesome-svg-core';
+import { faMapLocationDot } from '@fortawesome/free-solid-svg-icons';
+
+const advancedMapIcon = fontawesomeIcon(faMapLocationDot).html.join('');
 
 const Search = function Search(options = {}) {
   const keyCodes = {
@@ -24,7 +28,6 @@ const Search = function Search(options = {}) {
     title,
     titleAttribute,
     contentAttribute,
-    groupSuggestions,
     includeSearchableLayers,
     searchableDefault,
     maxZoomLevel,
@@ -41,6 +44,8 @@ const Search = function Search(options = {}) {
     queryParameterName = 'q',
     queryPrefix = '',
     backgroundImageUrl,
+    headerText = 'TOMTKARTA',
+    advancedMapButton,
     allowOversize = false,
     defaultSize = 'a4',
     printMargins = {
@@ -60,7 +65,9 @@ const Search = function Search(options = {}) {
   let searchButton;
   let closeButton;
   let containerElement;
+  let searchLayoutElement;
   let wrapperElement;
+  let advancedMapLinkElement;
   let curtainElement;
   let headerElement;
   let vectorSource;
@@ -70,6 +77,9 @@ const Search = function Search(options = {}) {
   const DEFAULT_PRINT_DPI = 150;
   const MILLIMETERS_PER_INCH = 25.4;
   const CSS_PIXEL_DPI = MILLIMETERS_PER_INCH / 0.28;
+
+  const ADDRESS_HEADER = 'Adresser';
+  const PARCEL_HEADER = 'Fastigheter';
 
   const margins = {
     topBottom: printMargins.topBottom * 2,
@@ -240,7 +250,7 @@ const Search = function Search(options = {}) {
 
   function fitMapForPrint(target, geom, pointCoords) {
     const view = map.getView();
-    const fitGeom = target.oversize ? new Origo.ol.geom.Point(pointCoords) : geom;
+    const fitGeom = target.oversize && pointCoords ? new Origo.ol.geom.Point(pointCoords) : geom;
     view.fit(fitGeom, {
       padding: [0, 0, 0, 0]
     });
@@ -279,8 +289,45 @@ const Search = function Search(options = {}) {
   }
 
   function getRelatedProperty(relatedPropertyId) {
-    const fetchUrl = options.urlYta.replace('objectId', relatedPropertyId);
+    const fetchUrl = options.urlYta.replace(/objectid/i, relatedPropertyId);
     return fetch(fetchUrl);
+  }
+
+  function getParcelId(feature) {
+    const { properties = {} } = feature;
+    return properties.fnr || feature.id || properties.id || properties.objectId || properties.objectid || properties.objektid || properties.objid;
+  }
+
+  function getParcelName(properties) {
+    return properties.name
+      || properties.registerbeteckning
+      || properties.beteckning
+      || properties.fastighetsbeteckning
+      || properties.registerenhet
+      || properties.id;
+  }
+
+  function getParcelMunicipality(properties) {
+    return properties.municipality
+      || properties.kommun
+      || properties.kommunnamn
+      || properties.municipalityName;
+  }
+
+  function getParcelCoordinates(geometry) {
+    if (geometry.type === 'Point') {
+      return Array.isArray(geometry.coordinates[0]) ? geometry.coordinates[0] : geometry.coordinates;
+    }
+
+    if (geometry.type === 'Polygon') {
+      return geometry.coordinates[0][0];
+    }
+
+    if (geometry.type === 'MultiPolygon') {
+      return geometry.coordinates[0][0][0];
+    }
+
+    return undefined;
   }
 
   function selectHandler(evt) {
@@ -293,7 +340,9 @@ const Search = function Search(options = {}) {
         const format = new Origo.ol.format.GeoJSON();
         const features = format.readFeatures(propertyData, { dataProjection: 'EPSG:3006' });
 
-        const property = features.filter(prop => prop.getGeometry().intersectsCoordinate(data.coordinates));
+        const property = data.useFetchedGeometry || !data.coordinates
+          ? features
+          : features.filter(prop => prop.getGeometry().intersectsCoordinate(data.coordinates));
 
         showPropertyPrintPreview(property, data.coordinates);
       });
@@ -302,26 +351,73 @@ const Search = function Search(options = {}) {
   function setSearchDb(data) {
     data.forEach((item) => {
       const dataItem = {};
-      dataItem.label = item[options.idIndex];
-      dataItem.value = item[options.valueIndex].trim();
-      dataItem.coordinates = [item[options.eastingIndex], item[options.northingIndex]];
-      dataItem.relatedProperty = item[options.relatedPropteryIndex];
-      searchDb[item[options.idIndex]] = dataItem;
+      /* Items from the /origoserver/lm/addresses endpoint are arrays organized as follows:
+         [ID, VALUE, EASTING, NORTHING, RELATED_PARCEL] 
+      */
+
+      dataItem.label = item[0];
+      dataItem.value = item[1].trim();
+      dataItem.coordinates = [item[2], item[3]];
+      dataItem.relatedProperty = item[4];
+      dataItem.type = 'address';
+      searchDb[item[0]] = dataItem;
+    });
+  }
+
+  function setParcelArraySearchDb(data) {
+    data.forEach((item, index) => {
+      if (!Array.isArray(item)) return;
+
+      const parcelId = item[0];
+      const value = item[1] && item[1].trim();
+      const hasCoordinates = item[2] !== undefined && item[2] !== null && item[3] !== undefined && item[3] !== null;
+      if (!parcelId || !value) return;
+
+      const label = `parcel-${parcelId}-${index}`;
+      const dataItem = {};
+      dataItem.label = label;
+      dataItem.value = value;
+      dataItem.coordinates = hasCoordinates ? [item[2], item[3]] : undefined;
+      dataItem.relatedProperty = parcelId;
+      dataItem.useFetchedGeometry = true;
+      dataItem.type = 'parcel';
+      searchDb[label] = dataItem;
     });
   }
 
   function setParcelSearchDb(data) {
-    const features = Array.isArray(data) ? data : data.features || [];
+    if (Array.isArray(data)) {
+      if (data[0] && data[0].type === 'Feature') {
+        setParcelFeatureSearchDb(data);
+      } else {
+        setParcelArraySearchDb(data);
+      }
+      return;
+    }
+
+    const features = data.features || [];
+    setParcelFeatureSearchDb(features);
+  }
+
+  function setParcelFeatureSearchDb(features) {
     features.forEach((feature, index) => {
       const { geometry, properties } = feature;
       if (!geometry || !properties || !geometry.coordinates) return;
 
-      const label = `parcel-${properties.id}-${index}`;
+      const parcelId = getParcelId(feature);
+      if (!parcelId) return;
+      const coordinates = getParcelCoordinates(geometry);
+      if (!coordinates) return;
+
+      const label = `parcel-${parcelId}-${index}`;
       const dataItem = {};
       dataItem.label = label;
-      dataItem.value = [properties.name, properties.municipality].filter(Boolean).join(', ');
-      dataItem.coordinates = [geometry.coordinates[1], geometry.coordinates[0]];
-      dataItem.relatedProperty = properties.id;
+      dataItem.value = [getParcelName(properties), getParcelMunicipality(properties)].filter(Boolean).join(', ');
+      if (!dataItem.value) return;
+      dataItem.coordinates = coordinates;
+      dataItem.relatedProperty = parcelId;
+      dataItem.useFetchedGeometry = true;
+      dataItem.type = 'parcel';
       searchDb[label] = dataItem;
     });
   }
@@ -392,65 +488,38 @@ const Search = function Search(options = {}) {
     return items.map(item => searchDb[item]);
   }
 
-  function groupDb(data) {
-    const group = {};
-    const ids = Object.keys(data);
-    ids.forEach((id) => {
-      const item = data[id];
-      let typeTitle;
-      if (layerNameAttribute && idAttribute) {
-        typeTitle = viewer.getLayer(item[layerNameAttribute]).get('title');
-      } else if (geometryAttribute && layerName) {
-        typeTitle = viewer.getLayer(item[layerName]).get('title');
-      } else if (titleAttribute && contentAttribute && geometryAttribute) {
-        typeTitle = item[titleAttribute];
-      } else if (geometryAttribute && title) {
-        typeTitle = title;
-      } else if (easting && northing && title) {
-        typeTitle = title;
-      }
-      if (typeTitle && typeTitle in group === false) {
-        group[typeTitle] = [];
-        item.header = typeTitle;
-      }
-      if (typeTitle) {
-        group[typeTitle].push(item);
-      } else if (id === 0) {
-        console.error('Search options are missing');
-      }
-    });
-    return group;
+  function addGroupHeader(items, header) {
+    if (items.length) {
+      items[0].header = header;
+    }
+    return items;
   }
 
-  function groupToList(group) {
-    const types = Object.keys(group);
-    let list = [];
-    const selection = {};
-    let nr = 0;
-    let turn = 0;
+  function getSharedAutocompleteList() {
+    const items = dbToList();
+    const addresses = items.filter(item => item.type === 'address');
+    const parcels = items.filter(item => item.type === 'parcel');
 
-    const groupList = () => {
-      types.slice().forEach((type) => {
-        if (nr < limit) {
-          const item = group[type][turn];
-          if (type in selection === false) {
-            selection[type] = [];
-          }
-          selection[type][turn] = item;
-          if (!group[type][turn + 1]) {
-            types.splice(types.indexOf(type), 1);
-          }
-        }
-        nr += 1;
-      });
-      turn += 1;
-    };
-
-    while (nr < limit && types.length) {
-      groupList();
+    if (!addresses.length || !parcels.length) {
+      return addGroupHeader(items.slice(0, limit), addresses.length ? ADDRESS_HEADER : PARCEL_HEADER);
     }
-    list = Object.keys(selection).reduce((previous, currentGroup) => previous.concat(selection[currentGroup]), []);
-    return list;
+
+    const addressLimit = Math.min(addresses.length, Math.ceil(limit / 2));
+    const parcelLimit = Math.min(parcels.length, Math.floor(limit / 2));
+    const selectedAddresses = addresses.slice(0, addressLimit);
+    const selectedParcels = parcels.slice(0, parcelLimit);
+    let remaining = limit - selectedAddresses.length - selectedParcels.length;
+
+    if (remaining > 0) {
+      selectedAddresses.push(...addresses.slice(selectedAddresses.length, selectedAddresses.length + remaining));
+      remaining = limit - selectedAddresses.length - selectedParcels.length;
+    }
+
+    if (remaining > 0) {
+      selectedParcels.push(...parcels.slice(selectedParcels.length, selectedParcels.length + remaining));
+    }
+
+    return addGroupHeader(selectedAddresses, ADDRESS_HEADER).concat(addGroupHeader(selectedParcels, PARCEL_HEADER));
   }
 
   /*
@@ -483,11 +552,7 @@ const Search = function Search(options = {}) {
       setSearchDb(addresses);
       setParcelSearchDb(parcels);
       if (Object.keys(searchDb).length) {
-        if (name && groupSuggestions) {
-          list = groupToList(groupDb(searchDb));
-        } else {
-          list = dbToList();
-        }
+        list = getSharedAutocompleteList();
         awesomplete.list = list;
         awesomplete.evaluate();
       }
@@ -541,11 +606,10 @@ const Search = function Search(options = {}) {
       if (!title) title = '';
       if (!titleAttribute) titleAttribute = undefined;
       if (!contentAttribute) contentAttribute = undefined;
-      groupSuggestions = Object.prototype.hasOwnProperty.call(options, 'groupSuggestions') ? options.groupSuggestions : false;
       includeSearchableLayers = Object.prototype.hasOwnProperty.call(options, 'includeSearchableLayers') ? options.includeSearchableLayers : false;
       searchableDefault = Object.prototype.hasOwnProperty.call(options, 'searchableDefault') ? options.searchableDefault : false;
       if (!maxZoomLevel) maxZoomLevel = viewer.getResolutions().length - 2 || viewer.getResolutions();
-      if (!limit) limit = 9;
+      if (!limit) limit = 10;
       if (!minLength) minLength = 4;
       map = viewer.getMap();
 
@@ -570,24 +634,36 @@ const Search = function Search(options = {}) {
       });
 
       containerElement = Origo.ui.Element({
-        cls: 'o-search o-search-false flex row align-center padding-right-small',
+        cls: 'o-search o-search-false flex row align-center padding-right-small width-full',
         innerHTML: `<input id="hjl" class="o-search-field form-control text-grey-darker" type="text" placeholder="${hintText}"></input>`
       });
 
-      wrapperElement = Origo.ui.Element({
-        cls: 'o-search-wrapper relative top-center rounded-larger box-shadow bg-white',
+      searchLayoutElement = Origo.ui.Element({
+        cls: 'siteplan-search-layout relative top-center',
         style: {
-          'flex-wrap': 'wrap',
-          overflow: 'visible',
           'z-index': 1,
           width: '80%',
           'max-width': '960px'
         }
       });
 
+      wrapperElement = Origo.ui.Element({
+        cls: 'o-search-wrapper relative rounded-larger box-shadow bg-white',
+        style: {
+          'flex-wrap': 'wrap',
+          overflow: 'visible',
+          width: '100%'
+        }
+      });
+
+      advancedMapLinkElement = advancedMapButton && advancedMapButton.url ? Origo.ui.Element({
+        cls: 'advanced-map-link-container width-full text-align-center',
+        innerHTML: `<a href="${advancedMapButton.url}" target="${advancedMapButton.target || '_blank'}" rel="noopener noreferrer" class="advanced-map-link" title="${advancedMapButton.title || 'Öppna avancerad karta'}"><span class="advanced-map-link-icon" aria-hidden="true">${advancedMapIcon}</span><span class="text">${advancedMapButton.text || 'Till avancerad karta'}</span></a>`
+      }) : undefined;
+
       headerElement = Origo.ui.Element({
         cls: 'relative width-full text-large text-white text-align-center margin-x-auto',
-        innerHTML: 'TOMTKARTA',
+        innerHTML: headerText,
         style: {
           'padding-top': 'calc(16px + 2%)',
           'font-size': 'calc(32px + 2.5vw)',
@@ -624,9 +700,13 @@ const Search = function Search(options = {}) {
       el = Origo.ui.dom.html(htmlString);
       document.getElementById(curtainElement.getId()).appendChild(el);
 
-      htmlString = wrapperElement.render();
+      htmlString = searchLayoutElement.render();
       el = Origo.ui.dom.html(htmlString);
       document.getElementById(curtainElement.getId()).appendChild(el);
+
+      htmlString = wrapperElement.render();
+      el = Origo.ui.dom.html(htmlString);
+      document.getElementById(searchLayoutElement.getId()).appendChild(el);
 
       htmlString = containerElement.render();
       el = Origo.ui.dom.html(htmlString);
@@ -639,6 +719,12 @@ const Search = function Search(options = {}) {
       htmlString = closeButton.render();
       el = Origo.ui.dom.html(htmlString);
       document.getElementById(containerElement.getId()).appendChild(el);
+
+      if (advancedMapLinkElement) {
+        htmlString = advancedMapLinkElement.render();
+        el = Origo.ui.dom.html(htmlString);
+        document.getElementById(searchLayoutElement.getId()).appendChild(el);
+      }
 
       initAutocomplete();
       bindUIActions();
