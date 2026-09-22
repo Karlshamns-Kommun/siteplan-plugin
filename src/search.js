@@ -137,7 +137,7 @@ const Search = function Search(options = {}) {
     return scales.reduce((prev, curr) => (Math.abs(curr - target) < Math.abs(prev - target) && curr > target ? curr : prev));
   }
 
-  function checkExtentSize(extent, printScales) {
+  function getPrintTargetForExtent(extent, printScales) {
     const extentWidth = extent[2] - extent[0];
     const extentHeight = extent[3] - extent[1];
     let pageSize;
@@ -184,13 +184,7 @@ const Search = function Search(options = {}) {
     };
   }
 
-  function showFeature(features, objTitle, content, pointCoords) {
-    const obj = {};
-    obj.feature = features[0];
-    obj.title = objTitle;
-    obj.content = content;
-    clear();
-
+  function createSelectionLayer(feature) {
     vectorSource = new Origo.ol.source.Vector();
     const vectorLayer = new Origo.ol.layer.Vector({
       source: vectorSource,
@@ -200,52 +194,88 @@ const Search = function Search(options = {}) {
     vectorLayer.set('group', 'none');
     map.addLayer(vectorLayer);
 
-    vectorSource.addFeature(features[0]);
+    vectorSource.addFeature(feature);
+  }
 
-    const geom = features[0].getGeometry();
+  function getPrintScales(projection) {
+    return viewer.getResolutions().map(resolution => `1:${resolutionToScale(resolution, projection, CSS_PIXEL_DPI)}`);
+  }
+
+  function getPrintTitle(feature) {
+    return feature.get('name').split('Enhetsområde')[0].trim().split(' ').slice(1).join(' ');
+  }
+
+  function showOversizeInfo() {
+    const modal = Origo.ui.Modal({
+      title: 'OBS!',
+      content: isOnIos() ? iosOversizeInfoContent : oversizeInfoContent,
+      target: viewer.getId(),
+      style: 'max-width: 94%;'
+    });
+    viewer.addComponent(modal);
+  }
+
+  function showOversizeInfoAfterRender(oversize) {
+    map.once('rendercomplete', () => {
+      setTimeout(() => {
+        if (oversize) {
+          showOversizeInfo();
+        }
+      }, 300);
+    });
+  }
+
+  function showPrintComponent(printComponent, target, printTitle) {
+    printComponent.render();
+    printComponent.changeOrientation({ orientation: target.featureOrientation });
+    printComponent.changeSize({ size: target.pageSize });
+    printComponent.changeTitle({ value: printTitle });
+  }
+
+  function showPrintLayers() {
+    map.getLayers().forEach((layer) => {
+      if (layer.get('inPrint')) { layer.setVisible(true); }
+    });
+  }
+
+  function fitMapForPrint(target, geom, pointCoords) {
+    const view = map.getView();
+    const fitGeom = target.oversize ? new Origo.ol.geom.Point(pointCoords) : geom;
+    view.fit(fitGeom, {
+      padding: [0, 0, 0, 0]
+    });
+    view.setResolution(target.closestResolution);
+  }
+
+  function showPropertyPrintPreview(features, pointCoords) {
+    const feature = features[0];
+    clear();
+    createSelectionLayer(feature);
+
+    const geom = feature.getGeometry();
     const printControl = viewer.getControlByName('print');
     const printComponent = printControl.getPrintComponent();
-    const view = map.getView();
-    const projection = view.getProjection();
+    const projection = map.getView().getProjection();
     printDpi = printComponent.getResolution() || DEFAULT_PRINT_DPI;
-    const printScales = viewer.getResolutions().map(resolution => `1:${resolutionToScale(resolution, projection, CSS_PIXEL_DPI)}`);
+    const printScales = getPrintScales(projection);
 
-    const target = checkExtentSize(geom.getExtent(), printScales);
-    title = obj.feature.get('name').split('Enhetsområde')[0].trim().split(' ').slice(1).join(' ');
+    const target = getPrintTargetForExtent(geom.getExtent(), printScales);
+    title = getPrintTitle(feature);
 
-    if (target) {
-      if (target.oversize && !allowOversize) {
-        alert('Fastigheten är för stor. Vänligen kontakta kommunens mätningsavdelning');
-      } else {
-        map.getLayers().forEach((layer) => {
-          if (layer.get('inPrint')) { layer.setVisible(true); }
-        });
-        const fitGeom = target.oversize ? new Origo.ol.geom.Point(pointCoords) : geom;
-        view.fit(fitGeom, {
-          padding: [0, 0, 0, 0]
-        });
-        view.setResolution(target.closestResolution);
-        printComponent.render();
-        printComponent.changeOrientation({ orientation: target.featureOrientation });
-        printComponent.changeSize({ size: target.pageSize });
-        printComponent.changeTitle({ value: title });
-        map.once('rendercomplete', () => {
-          setTimeout(() => {
-            if (target.oversize) {
-              const modal = Origo.ui.Modal({
-                title: 'OBS!',
-                content: isOnIos() ? iosOversizeInfoContent : oversizeInfoContent,
-                target: viewer.getId(),
-                style: 'max-width: 94%;'
-              });
-              viewer.addComponent(modal);
-            }
-          }, 300);
-        });
-      }
-    } else {
+    if (!target) {
       alert('Ett problem uppstod. Vänligen kontakta kommunens mätningsavdelning.');
+      return;
     }
+
+    if (target.oversize && !allowOversize) {
+      alert('Fastigheten är för stor. Vänligen kontakta kommunens mätningsavdelning');
+      return;
+    }
+
+    showPrintLayers();
+    fitMapForPrint(target, geom, pointCoords);
+    showPrintComponent(printComponent, target, title);
+    showOversizeInfoAfterRender(target.oversize);
   }
 
   function getRelatedProperty(relatedPropertyId) {
@@ -256,7 +286,6 @@ const Search = function Search(options = {}) {
   function selectHandler(evt) {
     const id = evt.text.label;
     const data = searchDb[id];
-    let content;
 
     getRelatedProperty(data.relatedProperty)
       .then(response => response.json())
@@ -266,7 +295,7 @@ const Search = function Search(options = {}) {
 
         const property = features.filter(prop => prop.getGeometry().intersectsCoordinate(data.coordinates));
 
-        showFeature(property, data[titleAttribute], content, data.coordinates);
+        showPropertyPrintPreview(property, data.coordinates);
       });
   }
 
