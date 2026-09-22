@@ -22,7 +22,6 @@ const Search = function Search(options = {}) {
     name,
     northing,
     easting,
-    idAttribute,
     layerNameAttribute,
     layerName,
     title,
@@ -37,7 +36,6 @@ const Search = function Search(options = {}) {
   } = options;
 
   const {
-    geometryAttribute,
     urlAdress,
     urlFastighet,
     urlYta,
@@ -125,6 +123,7 @@ const Search = function Search(options = {}) {
     }
   }
 
+  // Print sizing and scale helpers
   function resolutionToScale(resolution, projection, dpi) {
     const mpu = projection.getMetersPerUnit();
     let scale = resolution * mpu * 39.37 * dpi;
@@ -159,6 +158,7 @@ const Search = function Search(options = {}) {
     const view = map.getView();
     const projection = view.getProjection();
 
+    // Find the smallest configured page size/scale that can contain the selected property.
     for (let i = 0; i < sizes.length; i += 1) {
       const size = sizes[i];
       const pageWidth = featureOrientation === 'landscape' ? size.size[1] : size.size[0];
@@ -194,6 +194,7 @@ const Search = function Search(options = {}) {
     };
   }
 
+  // Map preview and print component orchestration
   function createSelectionLayer(feature) {
     vectorSource = new Origo.ol.source.Vector();
     const vectorLayer = new Origo.ol.layer.Vector({
@@ -298,6 +299,7 @@ const Search = function Search(options = {}) {
     return fetch(fetchUrl);
   }
 
+  // Search response normalization
   function getParcelId(feature) {
     const { properties = {} } = feature;
     return properties.objid;
@@ -337,6 +339,7 @@ const Search = function Search(options = {}) {
 
   function readPropertyFeatures(propertyData) {
     const format = new Origo.ol.format.GeoJSON();
+    // urlYta may return either a FeatureCollection or an array of Feature objects.
     const geojson = Array.isArray(propertyData)
       ? { type: 'FeatureCollection', features: propertyData }
       : propertyData;
@@ -352,6 +355,7 @@ const Search = function Search(options = {}) {
       .then((propertyData) => {
         const features = readPropertyFeatures(propertyData);
 
+        // Parcel searches already fetch the exact geometry by id; address searches need the related parcel filtered by coordinate.
         const property = data.useFetchedGeometry || !data.coordinates
           ? features
           : features.filter(prop => prop.getGeometry().intersectsCoordinate(data.coordinates));
@@ -377,38 +381,8 @@ const Search = function Search(options = {}) {
     });
   }
 
-  function setParcelArraySearchDb(data) {
-    data.forEach((item, index) => {
-      if (!Array.isArray(item)) return;
-
-      const parcelId = item[0];
-      const value = item[1] && item[1].trim();
-      const hasCoordinates = item[2] !== undefined && item[2] !== null && item[3] !== undefined && item[3] !== null;
-      if (!parcelId || !value) return;
-
-      const label = `parcel-${parcelId}-${index}`;
-      const dataItem = {};
-      dataItem.label = label;
-      dataItem.value = value;
-      dataItem.coordinates = hasCoordinates ? [item[2], item[3]] : undefined;
-      dataItem.relatedProperty = parcelId;
-      dataItem.useFetchedGeometry = true;
-      dataItem.type = 'parcel';
-      searchDb[label] = dataItem;
-    });
-  }
-
   function setParcelSearchDb(data) {
-    if (Array.isArray(data)) {
-      if (data[0] && data[0].type === 'Feature') {
-        setParcelFeatureSearchDb(data);
-      } else {
-        setParcelArraySearchDb(data);
-      }
-      return;
-    }
-
-    const features = data.features || [];
+    const features = Array.isArray(data) ? data : data.features || [];
     setParcelFeatureSearchDb(features);
   }
 
@@ -435,6 +409,7 @@ const Search = function Search(options = {}) {
     });
   }
 
+  // Search field and autocomplete UI
   function clearSearchResults() {
     awesomplete.list = [];
     awesomplete.suggestions = [];
@@ -517,6 +492,7 @@ const Search = function Search(options = {}) {
     const addresses = items.filter(item => item.type === 'address');
     const parcels = items.filter(item => item.type === 'parcel');
 
+    // Filter before limiting so the address/parcel split is based on the user's current text.
     if (!addresses.length || !parcels.length) {
       return addGroupHeader(items.slice(0, limit), addresses.length ? ADDRESS_HEADER : PARCEL_HEADER);
     }
@@ -547,6 +523,7 @@ const Search = function Search(options = {}) {
   The data-category attribute is used to make a layer division in the suggestion list.
   */
 
+  // Remote search requests
   function initAutocomplete() {
     let list;
     const input = document.getElementsByClassName('o-search-field')[0];
@@ -609,15 +586,15 @@ const Search = function Search(options = {}) {
 
   return Origo.ui.Component({
     name: 'search',
+
+    // Origo component lifecycle
     onAdd(evt) {
       viewer = evt.target;
       featureInfo = viewer.getControlByName('featureInfo');
       name = options.searchAttribute;
       if (!northing) northing = undefined;
       if (!easting) easting = undefined;
-      /** idAttribute in combination with layerNameAttribute
-     must be defined if search result should be selected */
-      idAttribute = options.idAttribute;
+
       if (!layerNameAttribute) layerNameAttribute = undefined;
       if (!layerName) layerName = undefined;
       if (!title) title = '';
