@@ -27,7 +27,7 @@ Based on the original version from Sigtuna kommun, with some inspiration from Ha
 	var origo = Origo('index.json');
 	origo.on('load', function (viewer) {
 		var siteplan = Siteplan(viewer, {
-			'headerText': 'TOMTCARTA',
+			'headerText': 'TOMTKARTA',
 			'hintText': 'Skriv in adress eller fastighet',
 			'advancedMapButton': {
 				'url': 'https://karta.karlshamn.se/situationsskiss-plus/', // Optional link shown below the search input.
@@ -49,3 +49,19 @@ Based on the original version from Sigtuna kommun, with some inspiration from Ha
 	});
 </script>
 ```
+
+#### Open the Origo print settings by default
+
+After a pracel is selected, Siteplan opens Origo's print preview automatically. To also have the print settings panel expanded, configure the Origo print control in `index.json`:
+
+```json
+{
+	"name": "print",
+	"options": {
+		"placement": "hidden",
+		"settingsExpanded": true
+	}
+}
+```
+
+Do not set `hideSettings` to `true`, since that hides the print settings control.

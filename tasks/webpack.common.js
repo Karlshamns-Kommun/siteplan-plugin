@@ -1,6 +1,6 @@
 module.exports = {
   entry: [
-    './siteplan.js'
+    './src/siteplan.js'
   ],
   module: {
     rules: [{
