@@ -45,6 +45,8 @@ const Search = function Search(options = {}) {
     headerText = 'TOMTKARTA',
     advancedMapButton,
     allowOversize = false,
+    hidePrintSettings = true,
+    hidePrintMapInteraction = true,
     defaultSize = 'a4',
     printMargins = {
       topBottom: 30,
@@ -238,6 +240,23 @@ const Search = function Search(options = {}) {
 
   function showPrintComponent(printComponent, target, printTitle) {
     printComponent.render();
+
+    if (hidePrintSettings) {
+      const printElement = document.getElementById(printComponent.getId());
+      const printTools = printElement && printElement.querySelector('#o-print-tools-left');
+      if (printTools && printTools.firstElementChild) {
+        printTools.firstElementChild.style.display = 'none';
+      }
+    }
+
+    if (hidePrintMapInteraction) {
+      const printElement = document.getElementById(printComponent.getId());
+      const printTools = printElement && printElement.querySelector('#o-print-tools-left');
+      if (printTools && printTools.lastElementChild) {
+        printTools.lastElementChild.style.display = 'none';
+      }
+    }
+
     printComponent.changeOrientation({ orientation: target.featureOrientation });
     printComponent.changeSize({ size: target.pageSize });
     printComponent.changeTitle({ value: printTitle });

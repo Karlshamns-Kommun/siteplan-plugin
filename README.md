@@ -44,24 +44,10 @@ Based on the original version from Sigtuna kommun, with some inspiration from Ha
 				'topBottom': 30,
 				'leftRight': 30
 			},
+			'hidePrintSettings': true, // Hides Origo's print settings control. Default is true; set to false to show it.
+			'hidePrintMapInteraction': true, // Hides "change map position" in print preview. Default is true; set to false to show it.
 			'allowOversize': true // If set to true, the user is allowed to pan to an appropriate extent if the selected property is too large for the available scales/page sizes
 		});
 	});
 </script>
 ```
-
-#### Open the Origo print settings by default
-
-After a pracel is selected, Siteplan opens Origo's print preview automatically. To also have the print settings panel expanded, configure the Origo print control in `index.json`:
-
-```json
-{
-	"name": "print",
-	"options": {
-		"placement": "hidden",
-		"settingsExpanded": true
-	}
-}
-```
-
-Do not set `hideSettings` to `true`, since that hides the print settings control.
