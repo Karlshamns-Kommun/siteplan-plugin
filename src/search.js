@@ -8,6 +8,13 @@ import { faMapLocationDot } from '@fortawesome/free-solid-svg-icons';
 const advancedMapIcon = fontawesomeIcon(faMapLocationDot).html.join('');
 
 const Search = function Search(options = {}) {
+  const defaultInitialQueryErrorMessages = {
+    empty: 'Sökningen saknar en adress eller fastighet.',
+    noResults: 'Ingen adress eller fastighet hittades för "{query}".',
+    multipleResults: 'Sökningen efter "{query}" gav flera träffar. Sök manuellt för att välja rätt träff.',
+    requestFailed: 'Sökningen kunde inte genomföras. Försök igen eller sök manuellt.'
+  };
+
   const keyCodes = {
     9: 'tab',
     27: 'esc',
@@ -40,6 +47,10 @@ const Search = function Search(options = {}) {
     urlFastighet,
     urlYta,
     queryParameterName = 'q',
+    siteplanQueryParameter = 'sitemap',
+    initialQueryErrorTitle = 'Sökfel',
+    initialQueryErrorDuration = 8000,
+    initialQueryErrorMessages = {},
     queryPrefix = '',
     backgroundImageUrl,
     headerText = 'TOMTKARTA',
@@ -55,6 +66,11 @@ const Search = function Search(options = {}) {
     iosOversizeInfoContent = '<div><p>Fastigheten är för stor för att rymmas i utskriften. Testa att flytta kartan manuellt så att aktuellt område visas på bästa sätt.</p><br><p>Notera att IOS-enheter endast tillåter utskrifter i A4-storlek. Prova därför att göra utskriften på en stationär enhet.</p></div>',
     oversizeInfoContent = '<div><p>Fastigheten är för stor för att rymmas i utskriften. Testa att flytta kartan manuellt så att aktuellt område visas på bästa sätt.</p></div>'
   } = options;
+
+  const queryErrorMessages = {
+    ...defaultInitialQueryErrorMessages,
+    ...initialQueryErrorMessages
+  };
 
   let searchDb = {};
   let map;
@@ -73,6 +89,7 @@ const Search = function Search(options = {}) {
   let vectorSource;
   let sizes;
   let printDpi;
+  let initialQueryHandled = false;
 
   const DEFAULT_PRINT_DPI = 150;
   const MILLIMETERS_PER_INCH = 25.4;
@@ -80,6 +97,10 @@ const Search = function Search(options = {}) {
 
   const ADDRESS_HEADER = 'Adresser';
   const PARCEL_HEADER = 'Fastigheter';
+  const searchResultCollator = new Intl.Collator('sv-SE', {
+    numeric: true,
+    sensitivity: 'base'
+  });
 
   const margins = {
     topBottom: printMargins.topBottom * 2,
@@ -365,11 +386,8 @@ const Search = function Search(options = {}) {
     return format.readFeatures(geojson);
   }
 
-  function selectHandler(evt) {
-    const id = evt.text.label;
-    const data = searchDb[id];
-
-    getRelatedProperty(data.relatedProperty)
+  function selectSearchResult(data) {
+    return getRelatedProperty(data.relatedProperty)
       .then(response => response.json())
       .then((propertyData) => {
         const features = readPropertyFeatures(propertyData);
@@ -381,6 +399,10 @@ const Search = function Search(options = {}) {
 
         showPropertyPrintPreview(property, data.coordinates);
       });
+  }
+
+  function selectHandler(evt) {
+    selectSearchResult(searchDb[evt.text.label]);
   }
 
   function setSearchDb(data) {
@@ -426,6 +448,90 @@ const Search = function Search(options = {}) {
       dataItem.type = 'parcel';
       searchDb[label] = dataItem;
     });
+  }
+
+  function getQueryUrl(searchUrl, query) {
+    let queryUrl = `${searchUrl}${searchUrl.indexOf('?') !== -1 ? '&' : '?'}${queryParameterName}=${encodeURIComponent(query)}`;
+    if (includeSearchableLayers) {
+      queryUrl += `&l=${viewer.getSearchableLayers(searchableDefault)}`;
+    }
+    return queryUrl;
+  }
+
+  function readJsonResponse(response) {
+    if (!response.ok) {
+      throw new Error(`Search request failed with status ${response.status}`);
+    }
+    return response.json();
+  }
+
+  function requestSearchResults(value) {
+    const query = `${queryPrefix} ${value}`.trim();
+    const addressRequest = fetch(getQueryUrl(urlAdress, query)).then(readJsonResponse);
+    const parcelRequest = urlFastighet
+      ? fetch(getQueryUrl(urlFastighet, query)).then(readJsonResponse)
+      : Promise.resolve([]);
+
+    return Promise.all([addressRequest, parcelRequest]);
+  }
+
+  function escapeHtml(value) {
+    const element = document.createElement('span');
+    element.textContent = value;
+    return element.innerHTML;
+  }
+
+  function showInitialQueryError(messageKey, query = '') {
+    const message = queryErrorMessages[messageKey].replace(/\{query\}/g, escapeHtml(query));
+    viewer.getLogger().createToast({
+      status: 'danger',
+      title: initialQueryErrorTitle,
+      message,
+      duration: initialQueryErrorDuration
+    });
+  }
+
+  function setInitialQueryLoading(loading) {
+    const loadingElement = document.getElementById('loading');
+    if (loadingElement) {
+      loadingElement.classList.toggle('hide', !loading);
+    }
+  }
+
+  function runInitialQuerySearch() {
+    if (initialQueryHandled) return null;
+
+    const query = new URLSearchParams(window.location.search).get(siteplanQueryParameter);
+    if (query === null) return null;
+    initialQueryHandled = true;
+
+    const value = query.trim();
+    if (!value) {
+      showInitialQueryError('empty');
+      return Promise.resolve();
+    }
+
+    return requestSearchResults(value)
+      .then(([addresses, parcels]) => {
+        searchDb = {};
+        setSearchDb(addresses);
+        setParcelSearchDb(parcels);
+
+        const results = dbToList();
+        if (results.length === 0) {
+          showInitialQueryError('noResults', value);
+          return;
+        }
+        if (results.length > 1) {
+          showInitialQueryError('multipleResults', value);
+          return;
+        }
+
+        return selectSearchResult(results[0]);
+      })
+      .catch(() => {
+        showInitialQueryError('requestFailed');
+      });
   }
 
   // Search field and autocomplete UI
@@ -506,14 +612,19 @@ const Search = function Search(options = {}) {
     return item.value.toLowerCase().includes(inputValue.toLowerCase());
   }
 
+  function sortSearchItems(items) {
+    return items.sort((first, second) => searchResultCollator.compare(first.value, second.value));
+  }
+
   function getSharedAutocompleteList(inputValue) {
     const items = dbToList().filter(item => matchesInput(item, inputValue));
-    const addresses = items.filter(item => item.type === 'address');
-    const parcels = items.filter(item => item.type === 'parcel');
+    const addresses = sortSearchItems(items.filter(item => item.type === 'address'));
+    const parcels = sortSearchItems(items.filter(item => item.type === 'parcel'));
 
     // Filter before limiting so the address/parcel split is based on the user's current text.
     if (!addresses.length || !parcels.length) {
-      return addGroupHeader(items.slice(0, limit), addresses.length ? ADDRESS_HEADER : PARCEL_HEADER);
+      const sortedItems = addresses.length ? addresses : parcels;
+      return addGroupHeader(sortedItems.slice(0, limit), addresses.length ? ADDRESS_HEADER : PARCEL_HEADER);
     }
 
     const addressLimit = Math.min(addresses.length, Math.ceil(limit / 2));
@@ -571,23 +682,8 @@ const Search = function Search(options = {}) {
       }
     };
 
-    function getQueryUrl(searchUrl, query) {
-      let queryUrl = `${searchUrl}${searchUrl.indexOf('?') !== -1 ? '&' : '?'}${queryParameterName}=${encodeURI(query)}`;
-      if (includeSearchableLayers) {
-        queryUrl += `&l=${viewer.getSearchableLayers(searchableDefault)}`;
-      }
-      return queryUrl;
-    }
-
     function makeRequest(reqHandler, obj) {
-      const query = `${queryPrefix} ${obj.value}`;
-      const addressRequest = fetch(getQueryUrl(urlAdress, query))
-        .then(response => response.json());
-      const parcelRequest = urlFastighet
-        ? fetch(getQueryUrl(urlFastighet, query)).then(response => response.json())
-        : Promise.resolve([]);
-
-      Promise.all([addressRequest, parcelRequest])
+      requestSearchResults(obj.value)
         .then(([addresses, parcels]) => reqHandler(addresses, parcels));
     }
 
@@ -703,6 +799,11 @@ const Search = function Search(options = {}) {
       let htmlString;
       let el;
 
+      const hasInitialQuery = new URLSearchParams(window.location.search).has(siteplanQueryParameter);
+      if (hasInitialQuery) {
+        setInitialQueryLoading(true);
+      }
+
       const mapEl = document.getElementById(viewer.getId());
 
       htmlString = curtainElement.render();
@@ -741,6 +842,10 @@ const Search = function Search(options = {}) {
 
       initAutocomplete();
       bindUIActions();
+      const initialQuerySearch = runInitialQuerySearch();
+      if (initialQuerySearch) {
+        initialQuerySearch.finally(() => setInitialQueryLoading(false));
+      }
 
       this.dispatch('render');
     }
