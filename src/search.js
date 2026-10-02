@@ -47,7 +47,7 @@ const Search = function Search(options = {}) {
     urlFastighet,
     urlYta,
     queryParameterName = 'q',
-    siteplanQueryParameter = 'sitemap',
+    siteplanQueryParameter = 'siteplan',
     initialQueryErrorTitle = 'Sökfel',
     initialQueryErrorDuration = 8000,
     initialQueryErrorMessages = {},
@@ -335,7 +335,7 @@ const Search = function Search(options = {}) {
   }
 
   function getRelatedProperty(relatedPropertyId) {
-    const fetchUrl = options.urlYta.replace(/objectid/i, relatedPropertyId);
+    const fetchUrl = urlYta.replace(/objectid/i, relatedPropertyId);
     return fetch(fetchUrl);
   }
 

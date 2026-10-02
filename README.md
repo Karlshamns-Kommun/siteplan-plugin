@@ -2,9 +2,11 @@
 
 Siteplan plugin for Origo.
 
-Developed for Origo 2.10.
+The plugin puts a landing page in front of origo and lets users query adresses and parcels. When an object is found the user is taken straight to the the print controller and is allowed to print a siteplan for the target parcel.
 
-Based on the original version from Sigtuna kommun, with some inspiration from Haninge kommun.
+The name and the code is based on a plugin from Sigtuna kommun. The original version only worked for Sigtuna Origo-fork. The intention with this plugin is to allow a standard Origo-instance to run a Siteplan as well.
+
+Developed and tested for Origo 2.10.
 
 #### Example usage of Siteplan plugin
 
@@ -38,7 +40,7 @@ Based on the original version from Sigtuna kommun, with some inspiration from Ha
 			'urlYta': '/origoserver/lm/registerenheter/objectId/enhetsomraden?srid=3009',// Kräver registerbeteckning direkt i origo server
 			'urlFastighet': '/origoserver/lm/registerenheter?srid=3009',// Kräver registerbeteckning direkt i origo server
 			'urlAdress': '/origoserver/lm/addresses?srid=3009',// Kräver belägenhetsadress direkt i origo server
-			'siteplanQueryParameter': 'sitemap', // URL parameter used to bypass the search input. Default is sitemap.
+			'siteplanQueryParameter': 'siteplan', // URL parameter used to bypass the search input. Default is siteplan.
 			'limit': 10, // Maximum number of autocomplete suggestions. Shared fairly by address and parcel results, grouped by type. Default is 10.
 			'backgroundImageUrl': 'img/bakgrund.jpg', // undefined if it's not active.
 			'printMargins': { // Should reflect the difference between page size and map size (in pixels). Default is 30/30.
@@ -62,8 +64,8 @@ Pass the following parameters as the second argument to `Siteplan(viewer, option
 | `urlAdress` | `string` | Required | URL for the address search endpoint. |
 | `urlFastighet` | `string` | Optional | URL for the parcel search endpoint. If omitted, only address results are requested. |
 | `urlYta` | `string` | Required | URL for fetching the selected parcel geometry. The URL must contain an `objectid` placeholder. |
-| `queryParameterName` | `string` | `q` | Query-string parameter appended to address, parcel, and geometry requests. |
-| `siteplanQueryParameter` | `string` | `sitemap` | URL parameter that bypasses the search field and opens a site plan when exactly one result is found. |
+| `queryParameterName` | `string` | `q` | Query string parameter name that is passed to Origo Server address, parcel, and geometry requests. |
+| `siteplanQueryParameter` | `string` | `siteplan` | URL parameter that bypasses the search field and opens a site plan when exactly one result is found. |
 | `queryPrefix` | `string` | Empty | Text prepended to every search query, usually municipality name. |
 | `limit` | `number` | `10` | Maximum number of autocomplete suggestions, shared between address and parcel results. |
 | `minLength` | `number` | `4` | Minimum number of characters before a search request is made. |
@@ -88,17 +90,17 @@ Address and parcel suggestions are sorted naturally using Swedish collation befo
 
 #### Open a site plan from a URL
 
-The search input can be bypassed by passing an (url encoded) address or parcel in the `sitemap` query parameter:
+The search input can be bypassed by passing an (url encoded) address or parcel in the `siteplan` query parameter:
 
 ```
-https://example.com/?sitemap=Storgatan%2015%2C%20Asarum
+https://example.com/?siteplan=Storgatan 1, Orten
 ```
 
 The plugin shows Origo's loading spinner before rendering the landing UI, then searches both the configured address and parcel endpoints. The spinner remains active through parcel loading, and print preview opens only when the endpoints return exactly one combined result.
 
 If the parameter is empty, there are no results, multiple results are returned, or a request fails, the plugin shows Origo's danger toast with the title `Sökfel`. The toast remains visible for eight seconds and can be dismissed by clicking it. The normal search input remains available so the user can correct or refine the search.
 
-Use `siteplanQueryParameter` to change the parameter name.
+Use `siteplanQueryParameter` to change the query parameter name. By default it is "siteplan".
 
 The toast title, duration in milliseconds, and messages can be configured in the Siteplan options. Message overrides are optional; omitted keys retain their default text. Use `{query}` to include the URL parameter value in a message.
 
