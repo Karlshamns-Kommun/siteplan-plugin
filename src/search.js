@@ -34,8 +34,6 @@ const Search = function Search(options = {}) {
     title,
     titleAttribute,
     contentAttribute,
-    includeSearchableLayers,
-    searchableDefault,
     maxZoomLevel,
     limit,
     hintText,
@@ -58,6 +56,8 @@ const Search = function Search(options = {}) {
     allowOversize = false,
     hidePrintSettings = true,
     hidePrintMapInteraction = true,
+    printScaleBarFontSize,
+    printScaleBarRatioFontSize = printScaleBarFontSize,
     defaultSize = 'a4',
     printMargins = {
       topBottom: 30,
@@ -259,8 +259,64 @@ const Search = function Search(options = {}) {
     });
   }
 
+  const printFormatListeners = new WeakSet();
+
+  function updatePrintScaleBarFontSize(printComponent) {
+    const printElement = document.getElementById(printComponent.getId());
+    if (!printElement) {
+      return;
+    }
+    const resolution = printComponent.getResolution() || DEFAULT_PRINT_DPI;
+    const fontSizes = [
+      [printScaleBarFontSize, 'siteplan-print', '--siteplan-scale-bar-font-size'],
+      [printScaleBarRatioFontSize, 'siteplan-print-scale-ratio', '--siteplan-scale-bar-ratio-font-size']
+    ];
+    fontSizes.forEach(([fontSize, className, propertyName]) => {
+      if (Number.isFinite(fontSize) && fontSize > 0) {
+        printElement.classList.add(className);
+        printElement.style.setProperty(propertyName, `${fontSize * resolution / DEFAULT_PRINT_DPI}px`);
+      }
+    });
+  }
+
+  function updatePrintFormat(printComponent, pageSize) {
+    const printElement = document.getElementById(printComponent.getId());
+    const createdElement = printElement && printElement.querySelector('.o-print-created');
+    if (!createdElement) {
+      return;
+    }
+
+    let formatElement = printElement.querySelector('.siteplan-print-format');
+    if (!formatElement) {
+      const metadataElement = document.createElement('div');
+      metadataElement.className = 'text-align-right no-shrink';
+      formatElement = document.createElement('div');
+      formatElement.className = 'siteplan-print-format';
+      createdElement.parentNode.insertBefore(metadataElement, createdElement);
+      metadataElement.appendChild(formatElement);
+      metadataElement.appendChild(createdElement);
+    }
+    formatElement.textContent = `Utskriftsformat: ${pageSize.toUpperCase()}`;
+    printComponent.updatePageSize();
+  }
+
   function showPrintComponent(printComponent, target, printTitle) {
+    if (!printFormatListeners.has(printComponent)) {
+      printComponent.getComponents().forEach((component) => {
+        component.on('change:size', ({ size }) => {
+          updatePrintScaleBarFontSize(printComponent);
+          updatePrintFormat(printComponent, size);
+        });
+        component.on('change:resolution', () => updatePrintScaleBarFontSize(printComponent));
+      });
+      printFormatListeners.add(printComponent);
+    }
     printComponent.render();
+
+    const footerElement = document.getElementById(printComponent.getId()).querySelector('.o-print-footer');
+    if (footerElement) {
+      footerElement.classList.remove('padding-left', 'padding-right');
+    }
 
     if (hidePrintSettings) {
       const printElement = document.getElementById(printComponent.getId());
@@ -281,6 +337,8 @@ const Search = function Search(options = {}) {
     printComponent.changeOrientation({ orientation: target.featureOrientation });
     printComponent.changeSize({ size: target.pageSize });
     printComponent.changeTitle({ value: printTitle });
+    updatePrintScaleBarFontSize(printComponent);
+    updatePrintFormat(printComponent, target.pageSize);
   }
 
   function showPrintLayers() {
@@ -451,11 +509,7 @@ const Search = function Search(options = {}) {
   }
 
   function getQueryUrl(searchUrl, query) {
-    let queryUrl = `${searchUrl}${searchUrl.indexOf('?') !== -1 ? '&' : '?'}${queryParameterName}=${encodeURIComponent(query)}`;
-    if (includeSearchableLayers) {
-      queryUrl += `&l=${viewer.getSearchableLayers(searchableDefault)}`;
-    }
-    return queryUrl;
+    return `${searchUrl}${searchUrl.indexOf('?') !== -1 ? '&' : '?'}${queryParameterName}=${encodeURIComponent(query)}`;
   }
 
   function readJsonResponse(response) {
@@ -715,8 +769,6 @@ const Search = function Search(options = {}) {
       if (!title) title = '';
       if (!titleAttribute) titleAttribute = undefined;
       if (!contentAttribute) contentAttribute = undefined;
-      includeSearchableLayers = Object.prototype.hasOwnProperty.call(options, 'includeSearchableLayers') ? options.includeSearchableLayers : false;
-      searchableDefault = Object.prototype.hasOwnProperty.call(options, 'searchableDefault') ? options.searchableDefault : false;
       if (!maxZoomLevel) maxZoomLevel = viewer.getResolutions().length - 2 || viewer.getResolutions();
       if (!limit) limit = 10;
       if (!minLength) minLength = 4;
