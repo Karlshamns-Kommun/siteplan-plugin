@@ -4,7 +4,7 @@ Siteplan plugin for Origo.
 
 The plugin puts a landing page in front of origo and lets users query adresses and parcels. When an object is found the user is taken straight to the the print controller and is allowed to print a siteplan for the target parcel.
 
-The name and the code is based on a the siteplan-plugin from Sigtuna kommun, which was specifically developed for the Sigtuna Origo-fork. The original version was made by Hudiksvalls kommun. The intention with this plugin is to allow a standard Origo-instance to run a Siteplan as well.
+The name and the code is based on the siteplan-plugin from Sigtuna kommun, which was specifically developed for the Sigtuna Origo-fork. The original version was made by Hudiksvalls kommun. The intention with this plugin is to allow a standard Origo-instance to run a Siteplan as well.
 
 Developed and tested for Origo 2.10.
 
