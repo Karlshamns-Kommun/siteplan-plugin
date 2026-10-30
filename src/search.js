@@ -218,7 +218,7 @@ const Search = function Search(options = {}) {
   }
 
   // Map preview and print component orchestration
-  function createSelectionLayer(feature) {
+  function createSelectionLayer(features) {
     vectorSource = new Origo.ol.source.Vector();
     const vectorLayer = new Origo.ol.layer.Vector({
       source: vectorSource,
@@ -228,7 +228,7 @@ const Search = function Search(options = {}) {
     vectorLayer.set('group', 'none');
     map.addLayer(vectorLayer);
 
-    vectorSource.addFeature(feature);
+    vectorSource.addFeatures(features);
   }
 
   function getPrintScales(projection) {
@@ -347,9 +347,9 @@ const Search = function Search(options = {}) {
     });
   }
 
-  function fitMapForPrint(target, geom, pointCoords) {
+  function fitMapForPrint(target, extent, pointCoords) {
     const view = map.getView();
-    const fitGeom = target.oversize && pointCoords ? new Origo.ol.geom.Point(pointCoords) : geom;
+    const fitGeom = target.oversize && pointCoords ? new Origo.ol.geom.Point(pointCoords) : extent;
     view.fit(fitGeom, {
       padding: [0, 0, 0, 0]
     });
@@ -364,16 +364,16 @@ const Search = function Search(options = {}) {
     }
 
     clear();
-    createSelectionLayer(feature);
+    createSelectionLayer(features);
 
-    const geom = feature.getGeometry();
+    const extent = vectorSource.getExtent();
     const printControl = viewer.getControlByName('print');
     const printComponent = printControl.getPrintComponent();
     const projection = map.getView().getProjection();
     printDpi = printComponent.getResolution() || DEFAULT_PRINT_DPI;
     const printScales = getPrintScales(projection);
 
-    const target = getPrintTargetForExtent(geom.getExtent(), printScales);
+    const target = getPrintTargetForExtent(extent, printScales);
     title = getPrintTitle(feature);
 
     if (!target) {
@@ -387,7 +387,7 @@ const Search = function Search(options = {}) {
     }
 
     showPrintLayers();
-    fitMapForPrint(target, geom, pointCoords);
+    fitMapForPrint(target, extent, pointCoords);
     showPrintComponent(printComponent, target, title);
     showOversizeInfoAfterRender(target.oversize);
   }
@@ -424,6 +424,10 @@ const Search = function Search(options = {}) {
       return Array.isArray(geometry.coordinates[0]) ? geometry.coordinates[0] : geometry.coordinates;
     }
 
+    if (geometry.type === 'MultiPoint') {
+      return geometry.coordinates[0];
+    }
+
     if (geometry.type === 'Polygon') {
       return geometry.coordinates[0][0];
     }
@@ -450,12 +454,7 @@ const Search = function Search(options = {}) {
       .then((propertyData) => {
         const features = readPropertyFeatures(propertyData);
 
-        // Parcel searches already fetch the exact geometry by id; address searches need the related parcel filtered by coordinate.
-        const property = data.useFetchedGeometry || !data.coordinates
-          ? features
-          : features.filter(prop => prop.getGeometry().intersectsCoordinate(data.coordinates));
-
-        showPropertyPrintPreview(property, data.coordinates);
+        showPropertyPrintPreview(features, data.coordinates);
       });
   }
 
@@ -502,7 +501,6 @@ const Search = function Search(options = {}) {
       if (!dataItem.value) return;
       dataItem.coordinates = coordinates;
       dataItem.relatedProperty = parcelId;
-      dataItem.useFetchedGeometry = true;
       dataItem.type = 'parcel';
       searchDb[label] = dataItem;
     });
