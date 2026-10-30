@@ -33,7 +33,7 @@ Developed and tested for Origo 2.10.
 			'headerText': 'TOMTKARTA',
 			'hintText': 'Skriv in adress eller fastighet',
 			'advancedMapButton': {
-				'url': 'https://karta.kommun.se/situationsskiss-plus/', // Optional link shown below the search input.
+				'url': 'https://karta.kommun.se/situationsskiss-plus/', // Optional link shown below the search input and at the bottom left of print preview.
 				'text': 'Till avancerad karta',
 				'title': 'Öppna avancerad karta',
 				'target': '_blank'
@@ -109,7 +109,7 @@ or `Siteplan(viewer, options)`.
 | `hintText` | `string` | `Sök...` | Placeholder text in the search field. |
 | `headerText` | `string` | `TOMTKARTA` | Heading displayed above the search field. |
 | `backgroundImageUrl` | `string` | None | Background image URL for the search view. |
-| `advancedMapButton` | `object` | None | Optional link below the search field. Set `url`, and optionally `text`, `title`, and `target`. |
+| `advancedMapButton` | `object` | None | Optional link below the search field and at the bottom left of print preview, outside the printable page. Set `url`, and optionally `text`, `title`, and `target`. |
 | `allowOversize` | `boolean` | `false` | Allows users to pan the map when the selected parcel is too large for the available print scales. |
 | `hidePrintSettings` | `boolean` | `true` | Hides the print settings control in print preview when `true`. |
 | `hidePrintMapInteraction` | `boolean` | `true` | Hides the control for changing the map position in print preview when `true`. |

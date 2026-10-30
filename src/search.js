@@ -334,6 +334,17 @@ const Search = function Search(options = {}) {
       }
     }
 
+    if (advancedMapLinkElement) {
+      const printElement = document.getElementById(printComponent.getId());
+      const searchLink = document.getElementById(advancedMapLinkElement.getId()).querySelector('.advanced-map-link');
+      if (searchLink && !printElement.querySelector('.siteplan-print-advanced-map')) {
+        const linkContainer = document.createElement('div');
+        linkContainer.className = 'siteplan-print-advanced-map fixed bottom-left z-index-ontop-high no-print';
+        linkContainer.appendChild(searchLink.cloneNode(true));
+        printElement.appendChild(linkContainer);
+      }
+    }
+
     printComponent.changeOrientation({ orientation: target.featureOrientation });
     printComponent.changeSize({ size: target.pageSize });
     printComponent.changeTitle({ value: printTitle });

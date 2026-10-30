@@ -54,6 +54,24 @@
 	z-index: 10;
 }
 
+.siteplan-print-advanced-map {
+	bottom: 0.5rem;
+	left: 0.5rem;
+	max-width: calc(100% - 1rem);
+}
+
+.siteplan-print-advanced-map .advanced-map-link {
+	box-sizing: border-box;
+	max-width: 100%;
+	position: relative;
+}
+
+.siteplan-print-advanced-map .advanced-map-link .text {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	white-space: normal;
+}
+
 .advanced-map-link:visited,
 .advanced-map-link:hover,
 .advanced-map-link:active,
@@ -99,6 +117,10 @@
 
 
 @media (max-width: 768px) {
+	.siteplan-print-advanced-map {
+		bottom: 3.5rem;
+	}
+
 	.advanced-map-link {
 		font-size: 0.75rem;
 	}
