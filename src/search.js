@@ -313,6 +313,14 @@ const Search = function Search(options = {}) {
     }
     printComponent.render();
 
+    console.log('Rendering print component:', printComponent.getId());
+    const renderedPrintElement = document.getElementById(printComponent.getId());
+    const mapInteractionTools = renderedPrintElement && renderedPrintElement.querySelector('#o-print-tools-left');
+    const mapInteractionButton = mapInteractionTools && mapInteractionTools.lastElementChild;
+    if (target.oversize && allowOversize && mapInteractionButton && !mapInteractionButton.classList.contains('active')) {
+      mapInteractionButton.click();
+    }
+
     const footerElement = document.getElementById(printComponent.getId()).querySelector('.o-print-footer');
     if (footerElement) {
       footerElement.classList.remove('padding-left', 'padding-right');
